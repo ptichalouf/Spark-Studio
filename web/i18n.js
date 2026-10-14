@@ -10,7 +10,9 @@
 //     data-i18n-placeholder / data-i18n-aria; applyStaticI18n() fills them.
 //   - Dynamic JS strings: call window.t('ss.some.key', {vars}) at the call
 //     site. Unknown keys fall back to English, then to the key itself.
-//   - Language choice: localStorage('ss_lang') -> navigator.language -> 'en'.
+//   - Language choice: localStorage('ss_lang') -> operator default
+//     (<html data-default-lang>, from SPARK_STUDIO_DEFAULT_LANG) ->
+//     navigator.language -> 'en'.
 //     Changing the language reloads the page (cheap and bullet-proof: every
 //     rendered panel, toast template and terminal hint re-materializes in the
 //     new language; server-side runs are untouched).
@@ -1030,11 +1032,24 @@
     return s;
   }
 
+  // Operator default: server.py renders <html data-default-lang="fr"> when
+  // SPARK_STUDIO_DEFAULT_LANG is set. It ranks after the user's own choice
+  // (so the selector keeps working) and before the browser language.
+  function operatorDefault() {
+    try {
+      var el = document.documentElement;
+      var d = el && typeof el.getAttribute === 'function' ? el.getAttribute('data-default-lang') : null;
+      return d && I18N[d] ? d : null;
+    } catch (e) { return null; }
+  }
+
   function detect() {
     try {
       var stored = localStorage.getItem('ss_lang');
       if (stored && I18N[stored]) return stored;
     } catch (e) { /* private mode etc. */ }
+    var dflt = operatorDefault();
+    if (dflt) return dflt;
     var nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
     return I18N[nav] ? nav : 'en';
   }

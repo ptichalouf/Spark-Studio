@@ -555,6 +555,7 @@ sudo ufw allow from 192.168.0.0/24 to any port 7860 proto tcp
 | `SPARK_STUDIO_AUTOFIX_WAIT` | Seconds Auto-Fix & Retry (and Optimize Speed) waits for a relaunched engine before judging the attempt | `1800` |
 | `SPARK_STUDIO_OPTIMIZE_MARGIN` | Percent tok/s improvement over baseline at which Optimize Speed declares success and stops early | `10` |
 | `SPARK_STUDIO_CORS_ORIGINS` | Comma-separated origins allowed to call the API cross-origin (off by default — the UI is same-origin and the app has no auth) | unset (no CORS) |
+| `SPARK_STUDIO_DEFAULT_LANG` | Default UI language for this box (`en` or `fr`). It replaces the browser-language guess; a language picked in the header selector still wins | unset (browser language) |
 
 The Models tab scans all of the above **plus** any cache your saved recipes
 hand to engine containers via `-e HF_HUB_CACHE=…`, so models show up even when

@@ -4120,7 +4120,24 @@ def _serve_index() -> Response:
         if p.exists():
             ver = int(p.stat().st_mtime)
             html = html.replace(f"/static/{asset}", f"/static/{asset}?v={ver}")
+    lang = _default_ui_lang()
+    if lang:
+        html = html.replace('<html lang="en">', f'<html lang="{lang}" data-default-lang="{lang}">', 1)
     return Response(content=html, media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
+# UI languages shipped in web/i18n.js (tests/test_i18n.py keeps them in sync).
+UI_LANGS = ("en", "fr")
+
+
+def _default_ui_lang() -> str | None:
+    """Operator default UI language (SPARK_STUDIO_DEFAULT_LANG, e.g. ``fr``).
+
+    Unset or unknown values return None: the browser language then decides,
+    as before. A user's explicit choice in the selector always wins (client).
+    """
+    v = os.environ.get("SPARK_STUDIO_DEFAULT_LANG", "").strip().lower()
+    return v if v in UI_LANGS else None
 
 
 @app.get("/")

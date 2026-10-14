@@ -234,6 +234,37 @@ class I18nServerTests(unittest.TestCase):
         for name in ("app.js", "style.css", "i18n.js"):
             self.assertIn(name, assets, f"{name} not in cache-busted assets")
 
+    def _index(self, env):
+        import os
+        from unittest import mock
+        import server
+        with mock.patch.dict(os.environ, env):
+            if not env:
+                os.environ.pop("SPARK_STUDIO_DEFAULT_LANG", None)
+            return server._serve_index().body.decode("utf-8")
+
+    def test_default_lang_absent_keeps_browser_detection(self):
+        html = self._index({})
+        self.assertIn('<html lang="en">', html)
+        self.assertNotIn("data-default-lang", html)
+
+    def test_default_lang_fr_is_injected(self):
+        html = self._index({"SPARK_STUDIO_DEFAULT_LANG": " FR "})
+        self.assertIn('<html lang="fr" data-default-lang="fr">', html)
+
+    def test_default_lang_rejects_unknown_or_unsafe_values(self):
+        for bad in ("xx", "fr\"><script>", "french", "e n", ""):
+            with self.subTest(value=bad):
+                html = self._index({"SPARK_STUDIO_DEFAULT_LANG": bad})
+                self.assertIn('<html lang="en">', html)
+                self.assertNotIn("data-default-lang", html)
+
+    def test_server_ui_langs_match_the_dictionaries(self):
+        import server
+        for name in server.UI_LANGS:
+            self.assertTrue(load_dict(name), f"{name} listed in server.UI_LANGS but absent from i18n.js")
+        self.assertEqual(set(server.UI_LANGS), {"en", "fr"})
+
 
 class I18nRuntimeTests(unittest.TestCase):
     """Exercise web/i18n.js itself with Node, if available."""
@@ -308,6 +339,55 @@ console.log(JSON.stringify({
         # {plural} derivation: fr 1 => "modèle", 3 => "modèles".
         self.assertIn("modèle ·", fr_probe["plural1"])
         self.assertIn("modèles ·", fr_probe["plural2"])
+
+    def _detect(self, stored, nav, default_attr):
+        """Load i18n.js once with the given localStorage / navigator / html
+        data-default-lang and return window.ssLang."""
+        probe = r"""
+const [stored, nav, dflt] = JSON.parse(process.argv[2]);
+globalThis.document = {
+  readyState: 'complete',
+  documentElement: { lang: '', getAttribute(k){ return k === 'data-default-lang' ? dflt : null; } },
+  querySelectorAll: () => [],
+  getElementById: () => null,
+  addEventListener: () => {},
+  title: '',
+};
+globalThis.window = globalThis;
+globalThis.localStorage = { _s: stored ? { ss_lang: stored } : {}, getItem(k){ return this._s[k] ?? null; }, setItem(k, v){ this._s[k] = v; } };
+// Node >= 21 ships a read-only global navigator: redefine it, don't assign.
+Object.defineProperty(globalThis, 'navigator', { value: { language: nav }, configurable: true, writable: true });
+eval(require('fs').readFileSync(process.argv[1], 'utf8'));
+console.log(window.ssLang + '|' + document.documentElement.lang);
+"""
+        proc = subprocess.run(
+            [self.node, "-e", probe, str(I18N_JS), json.dumps([stored, nav, default_attr])],
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(proc.returncode, 0, f"runtime probe failed: {proc.stderr}")
+        lang, html_lang = proc.stdout.strip().split("|")
+        self.assertEqual(lang, html_lang, "<html lang> must follow the chosen language")
+        return lang
+
+    def test_operator_default_language(self):
+        """Order: user's stored choice > operator default (data-default-lang)
+        > browser language > en. Unknown defaults are ignored."""
+        if not self.node:
+            self.skipTest("node not installed")
+        cases = [
+            ((None, "en-US", "fr"), "fr"),   # operator default beats the browser
+            (("en", "en-US", "fr"), "en"),   # the selector's stored choice wins
+            (("fr", "en-US", None), "fr"),
+            ((None, "fr-FR", None), "fr"),   # no default -> browser (PR #3 behaviour)
+            ((None, "en-US", None), "en"),
+            ((None, "de-DE", None), "en"),
+            ((None, "en-US", "xx"), "en"),   # unknown default ignored
+            ((None, "fr-FR", "xx"), "fr"),
+            ((None, "en-US", ""), "en"),
+        ]
+        for args, want in cases:
+            with self.subTest(args=args):
+                self.assertEqual(self._detect(*args), want)
 
 
 if __name__ == "__main__":
