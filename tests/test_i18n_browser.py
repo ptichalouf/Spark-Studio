@@ -173,6 +173,56 @@ class StaticI18nBrowserTests(unittest.TestCase):
     def test_french_engine_chat_send(self):
         self._check_engine_chat("fr")
 
+    def test_operator_default_and_selector(self):
+        """SPARK_STUDIO_DEFAULT_LANG=fr, en-US browser, nothing stored:
+        the HTML rendered by server._serve_index opens in French, and the
+        EN/FR selector still switches (and persists) the language."""
+        try:
+            from unittest import mock
+            import server
+        except Exception as exc:  # server deps not installed in this env
+            self.skipTest(f"server.py not importable: {exc}")
+        with mock.patch.dict(os.environ, {"SPARK_STUDIO_DEFAULT_LANG": "fr"}):
+            served = server._serve_index().body.decode("utf-8")
+        self.assertIn('<html lang="fr" data-default-lang="fr">', served)
+
+        page = self.browser.new_page(locale="en-US")
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+
+        def route(r):
+            path = urlsplit(r.request.url).path
+            if r.request.url.rstrip("/") == ORIGIN:
+                return r.fulfill(status=200, content_type="text/html", body=served)
+            if path.startswith("/static/"):
+                f = WEB / path[len("/static/"):]
+                if f.is_file():
+                    ctype = mimetypes.guess_type(str(f))[0] or "application/octet-stream"
+                    return r.fulfill(status=200, content_type=ctype, body=f.read_bytes())
+            return r.abort()
+
+        page.route("**/*", route)
+        try:
+            state = ("() => ({lang: window.ssLang, html: document.documentElement.lang,"
+                     " sel: document.getElementById('langSelect').value,"
+                     " overview: document.querySelector('h1[data-i18n=\"ss.nav.overview\"]').textContent,"
+                     " stored: localStorage.getItem('ss_lang')})")
+            page.goto(ORIGIN + "/", wait_until="load")
+            page.wait_for_function("() => window.ssLang !== undefined")
+            first = page.evaluate(state)
+            self.assertEqual(first, {"lang": "fr", "html": "fr", "sel": "fr",
+                                     "overview": _fr_value("ss.nav.overview"), "stored": None})
+            for target, overview in (("en", "Overview"), ("fr", _fr_value("ss.nav.overview"))):
+                with page.expect_navigation():
+                    page.select_option("#langSelect", target, force=True)
+                page.wait_for_function("() => window.ssLang !== undefined")
+                now = page.evaluate(state)
+                self.assertEqual(now, {"lang": target, "html": target, "sel": target,
+                                       "overview": overview, "stored": target})
+            self.assertEqual(errors, [])
+        finally:
+            page.close()
+
 
 if __name__ == "__main__":
     unittest.main()
