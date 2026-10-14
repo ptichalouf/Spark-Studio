@@ -449,7 +449,7 @@ docker exec vllm_node vllm serve cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit \\
   --async-scheduling --trust-remote-code --tensor-parallel-size 1
 `,
   sglang: `# SGLang via Docker (adjust image + model)
-docker run -d --rm --gpus all --network host --name sglang_node \\
+docker run -d --rm --gpus all --privileged --network host --name sglang_node \\
   -v $HOME/.cache/huggingface:/root/.cache/huggingface \\
   lmsysorg/sglang:latest \\
   python -m sglang.launch_server --model-path MODEL --host 0.0.0.0 --port 8000

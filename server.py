@@ -1086,7 +1086,7 @@ def _start_sparkrun(ref: str, tp: int | None, recipe_id: int | None = None, forc
             spark_opts = ((rec or {}).get("args") or {}).get("_sparkrun") or {}
         except Exception:  # noqa: BLE001
             spark_opts = {}
-    cmd = f"sparkrun run {shlex.quote(launch_target)} --tp {tp}"
+    cmd = f"sparkrun run {shlex.quote(launch_target)} --tp {tp} --rootful"
     if spark_opts.get("max_model_len"):
         cmd += f" --max-model-len {int(spark_opts['max_model_len'])}"
     for k, v in (spark_opts.get("overrides") or {}).items():
